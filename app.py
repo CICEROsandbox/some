@@ -8,12 +8,6 @@ API_KEY = os.getenv("CLAUDE_API_KEY") or st.secrets["API_KEY"]
 API_ENDPOINT = "https://api.anthropic.com/v1/messages"
 
 REFERENCE_SITES = [
-    "https://www.miljodirektoratet.no/ansvarsomrader/klima/",
-    "https://www.regjeringen.no/no/tema/klima-og-miljo/",
-    "https://cicero.oslo.no/no/posts/klima/",
-    "https://www.fn.no/tema/klima-og-miljoe",
-    "https://energiogklima.no/",
-    "https://snl.no/klimapolitikk"
     "https://www.miljodirektoratet.no/ansvarsomrader/klima/fns-klimapanel-ipcc/dette-sier-fns-klimapanel/klimabegreper-pa-norsk/"
 ]
 
