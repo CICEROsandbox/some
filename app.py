@@ -8,6 +8,8 @@ API_KEY = os.getenv("CLAUDE_API_KEY")
 # Claude API endpoint (replace with the actual endpoint if different)
 API_ENDPOINT = "https://api.anthropic.com/v1/complete"
 
+API_KEY = st.secrets["API_KEY"]
+
 st.title("Norwegian Text Utilities")
 
 # Sidebar navigation
