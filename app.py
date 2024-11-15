@@ -1,22 +1,3 @@
-import streamlit as st
-import requests
-import os
-
-# Replace with your actual API key or set it as an environment variable
-API_KEY = os.getenv("CLAUDE_API_KEY")
-
-# Claude API endpoint (replace with the actual endpoint if different)
-API_ENDPOINT = "https://api.anthropic.com/v1/complete"
-
-API_KEY = st.secrets["API_KEY"]
-
-st.title("Norwegian Text Utilities")
-
-# Sidebar navigation
-option = st.sidebar.selectbox(
-    "Choose an option:",
-    ("Translate Norwegian to English", "Clean Up Norwegian Text")
-)
 if option == "Translate Norwegian to English":
     st.header("Translate Norwegian to English")
 
@@ -33,14 +14,17 @@ if option == "Translate Norwegian to English":
             # Set up headers and payload for the API request
             headers = {
                 "x-api-key": API_KEY,
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "anthropic-version": "2023-06-01"  # Replace with the correct API version
             }
 
             payload = {
                 "prompt": prompt,
-                "model": "claude-v1",  # Update the model name if necessary
+                "model": "claude-v1",  # Update if necessary
                 "max_tokens_to_sample": 1000,
-                "temperature": 0.7
+                "temperature": 0.7,
+                "stop_sequences": [],
+                "stream": False
             }
 
             # Make the API request
@@ -69,14 +53,17 @@ elif option == "Clean Up Norwegian Text":
             # Set up headers and payload for the API request
             headers = {
                 "x-api-key": API_KEY,
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "anthropic-version": "2023-06-01"  # Replace with the correct API version
             }
 
             payload = {
                 "prompt": prompt,
-                "model": "claude-v1",  # Update the model name if necessary
+                "model": "claude-v1",  # Update if necessary
                 "max_tokens_to_sample": 1000,
-                "temperature": 0.7
+                "temperature": 0.7,
+                "stop_sequences": [],
+                "stream": False
             }
 
             # Make the API request
@@ -94,7 +81,7 @@ elif option == "Clean Up Norwegian Text":
 
                 if accept:
                     st.success("You have accepted the suggestions.")
-                    # Additional code to handle acceptance (e.g., save to a file or database)
+                    # Additional code to handle acceptance
                 elif decline:
                     st.info("You have declined the suggestions.")
                     # Additional code to handle declination
