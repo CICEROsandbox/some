@@ -3,6 +3,10 @@
 import streamlit as st
 from modules.bluesky_api import get_posts, schedule_reposts
 
+api_key = st.secrets["bluesky"]["api_key"]
+username = st.secrets["auth"]["username"]
+password = st.secrets["auth"]["password"]
+
 def main():
     st.title("Bluesky Repost Scheduler")
     
