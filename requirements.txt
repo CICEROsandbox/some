@@ -1,4 +1,2 @@
 streamlit
 requests
-schedule
-# Add other dependencies
