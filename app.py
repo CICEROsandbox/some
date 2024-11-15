@@ -7,8 +7,57 @@ import os
 API_KEY = os.getenv("CLAUDE_API_KEY") or st.secrets["API_KEY"]
 API_ENDPOINT = "https://api.anthropic.com/v1/messages"
 
+st.title("Klimaforhandlinger Oversetter")
+
+option = st.sidebar.selectbox(
+    "Velg funksjon:",
+    ("Oversett Engelsk til Norsk", "Korrektur Norsk Tekst")
+)
+
+if option == "Oversett Engelsk til Norsk":
+    st.header("Oversett Engelsk til Norsk")
+    english_text = st.text_area("Skriv inn engelsk tekst:")
+
+    if st.button("Oversett"):
+        if english_text.strip() == "":
+            st.warning("Vennligst skriv inn tekst som skal oversettes.")
+        else:
+            headers = {
+                "anthropic-version": "2023-06-01",
+                "x-api-key": API_KEY,
+                "content-type": "application/json",
+            }
+
+            prompt = """Du er en ekspert på å oversette klimaforhandlingstekster fra engelsk til norsk. 
+            Vær spesielt oppmerksom på tekniske termer og etablerte uttrykk innen klimapolitikk.
+            Hvis det finnes flere mulige oversettelser eller hvis noen termer mangler etablerte norske oversettelser, 
+            inkluder dette i parentes etter ordet. Oversett følgende tekst:
+
+            {text}"""
+
+            payload = {
+                "messages": [{
+                    "role": "user",
+                    "content": prompt.format(text=english_text)
+                }],
+                "model": "claude-3-sonnet-20240229",
+                "max_tokens": 1000,
+                "temperature": 0.7
+            }
+
+            response = requests.post(API_ENDPOINT, headers=headers, json=payload)
+
+            if response.status_code == 200:
+                result = response.json()
+                translated_text = result["content"][0]["text"]
+                st.subheader("Oversatt tekst:")
+                st.write(translated_text)
+            else:
+                error_info = response.json().get('error', {})
+                error_message = error_info.get('message', 'En ukjent feil oppstod.')
+                st.error(f"Feil: {response.status_code} - {error_message}")
+
 def get_word_diffs(original, suggested):
-    """Get word-by-word differences between original and suggested text"""
     def split_into_words(text):
         return re.findall(r'\S+|\s+', text)
     
@@ -44,60 +93,17 @@ def get_word_diffs(original, suggested):
             })
     return changes
 
-st.title("Norwegian Text Utilities")
-
-option = st.sidebar.selectbox(
-    "Choose an option:",
-    ("Translate Norwegian to English", "Clean Up Norwegian Text")
-)
-
-if option == "Translate Norwegian to English":
-    st.header("Translate Norwegian to English")
-    norwegian_text = st.text_area("Enter Norwegian text:")
-
-    if st.button("Translate"):
-        if norwegian_text.strip() == "":
-            st.warning("Please enter some text to translate.")
-        else:
-            headers = {
-                "anthropic-version": "2023-06-01",
-                "x-api-key": API_KEY,
-                "content-type": "application/json",
-            }
-
-            payload = {
-                "messages": [{
-                    "role": "user",
-                    "content": f"Translate the following Norwegian text to English:\n\n{norwegian_text}"
-                }],
-                "model": "claude-3-sonnet-20240229",
-                "max_tokens": 1000,
-                "temperature": 0.7
-            }
-
-            response = requests.post(API_ENDPOINT, headers=headers, json=payload)
-
-            if response.status_code == 200:
-                result = response.json()
-                translated_text = result["content"][0]["text"]
-                st.subheader("Translated Text:")
-                st.write(translated_text)
-            else:
-                error_info = response.json().get('error', {})
-                error_message = error_info.get('message', 'An unknown error occurred.')
-                st.error(f"Error: {response.status_code} - {error_message}")
-
-elif option == "Clean Up Norwegian Text":
-    st.header("Clean Up Norwegian Text")
+elif option == "Korrektur Norsk Tekst":
+    st.header("Korrektur Norsk Tekst")
     
     if 'final_text' not in st.session_state:
         st.session_state.final_text = ''
     
-    norwegian_text = st.text_area("Enter text to clean up:")
+    norwegian_text = st.text_area("Skriv inn tekst som skal korrekturleses:")
 
-    if st.button("Clean Up"):
+    if st.button("Korriger"):
         if norwegian_text.strip() == "":
-            st.warning("Please enter some text to clean up.")
+            st.warning("Vennligst skriv inn tekst som skal korrekturleses.")
         else:
             headers = {
                 "anthropic-version": "2023-06-01",
@@ -108,7 +114,7 @@ elif option == "Clean Up Norwegian Text":
             payload = {
                 "messages": [{
                     "role": "user",
-                    "content": f"Please proofread and correct the following Norwegian text. Only provide the corrected version without explanations:\n\n{norwegian_text}"
+                    "content": f"Korriger følgende norske tekst med fokus på klimaforhandlingsterminologi. Gi kun korrigert versjon uten forklaringer:\n\n{norwegian_text}"
                 }],
                 "model": "claude-3-sonnet-20240229",
                 "max_tokens": 1000,
@@ -123,7 +129,7 @@ elif option == "Clean Up Norwegian Text":
                 
                 changes = get_word_diffs(norwegian_text, suggested_text)
                 
-                st.subheader("Review Changes:")
+                st.subheader("Gjennomgå endringer:")
                 
                 final_text = norwegian_text
                 
@@ -139,23 +145,23 @@ elif option == "Clean Up Norwegian Text":
                                 
                         if change['type'] in ['change', 'insertion']:
                             with col2:
-                                st.markdown(f"**Suggested:** _{change['suggested']}_")
+                                st.markdown(f"**Foreslått:** _{change['suggested']}_")
                         
                         with col3:
                             key = f"change_{i}"
-                            if st.button("Accept", key=f"accept_{i}"):
+                            if st.button("Godta", key=f"accept_{i}"):
                                 final_text = final_text.replace(
                                     change['original'] if change['type'] != 'insertion' else '',
                                     change['suggested']
                                 )
                                 st.session_state.final_text = final_text
                             
-                            if st.button("Decline", key=f"decline_{i}"):
+                            if st.button("Avslå", key=f"decline_{i}"):
                                 st.session_state.final_text = final_text
                 
-                st.subheader("Final Text:")
+                st.subheader("Endelig tekst:")
                 st.write(st.session_state.final_text or final_text)
             else:
                 error_info = response.json().get('error', {})
-                error_message = error_info.get('message', 'An unknown error occurred.')
-                st.error(f"Error: {response.status_code} - {error_message}")
+                error_message = error_info.get('message', 'En ukjent feil oppstod.')
+                st.error(f"Feil: {response.status_code} - {error_message}")
