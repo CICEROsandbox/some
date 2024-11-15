@@ -42,7 +42,7 @@ if option == "Translate Norwegian to English":
 
             payload = {
                 "prompt": prompt,
-                "model": "claude-v1",
+                "model": "claude-3-sonnet-20240229",
                 "max_tokens_to_sample": 1000,
                 "temperature": 0.7,
                 "stop_sequences": ["\n\nHuman:"],  # To stop the assistant when it's done
