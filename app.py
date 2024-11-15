@@ -14,59 +14,20 @@ REFERENCE_SITES = [
     "https://www.fn.no/tema/klima-og-miljoe",
     "https://energiogklima.no/",
     "https://snl.no/klimapolitikk"
-    "https://www.miljodirektoratet.no/ansvarsomrader/klima/fns-klimapanel-ipcc/dette-sier-fns-klimapanel/klimabegreper-pa-norsk/"
 ]
 
-def get_word_diffs(original, suggested):
-    def split_into_words(text):
-        return re.findall(r'\S+|\s+', text)
-    
-    original_words = split_into_words(original)
-    suggested_words = split_into_words(suggested)
-    
-    matcher = difflib.SequenceMatcher(None, original_words, suggested_words)
-    changes = []
-    
-    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-        if tag == 'replace':
-            changes.append({
-                'type': 'change',
-                'original': ''.join(original_words[i1:i2]),
-                'suggested': ''.join(suggested_words[j1:j2])
-            })
-        elif tag == 'delete':
-            changes.append({
-                'type': 'deletion',
-                'original': ''.join(original_words[i1:i2]),
-                'suggested': ''
-            })
-        elif tag == 'insert':
-            changes.append({
-                'type': 'insertion',
-                'original': '',
-                'suggested': ''.join(suggested_words[j1:j2])
-            })
-        elif tag == 'equal':
-            changes.append({
-                'type': 'equal',
-                'text': ''.join(original_words[i1:i2])
-            })
-    return changes
-
-def translate_with_references(text, sources):
+def translate_with_context(text, sources):
     prompt_template = """Du er en ekspert på å oversette klimaforhandlingstekster fra engelsk til norsk. 
-    Bruk terminologi som er konsistent med følgende norske kilder på klimaområdet:
+    Når du oversetter:
+    1. Prioriter å formidle meningsinnholdet framfor direkte oversettelse
+    2. For tekniske begreper uten direkte norsk ekvivalent, forklar konseptet på norsk og inkluder det engelske begrepet i parentes
+    3. For komplekse uttrykk, omskriv til naturlig norsk som formidler samme mening
+    4. Legg til korte forklaringer i parentes der det trengs for å klargjøre betydningen
+    
+    Bruk terminologi konsistent med disse norske kildene:
     {sources}
 
-    Vær spesielt oppmerksom på tekniske termer. For termer som mangler etablerte norske oversettelser 
-    eller har flere alternativer, inkluder alternativene i parentes. Hvis det ikke finnes gode etablerte termer, gi heller en beskrivelse av hva det er. 
-    
-    For eksempel:
-    - "mitigation" → "utslippsreduksjon (klimagassreduksjon)"
-    - "adaptation" → "klimatilpasning (tilpasning til klimaendringer)"
-    - "loss and damage" → "tap og skade (klimarelaterte tap og skader)"
-    
-    Oversett følgende tekst:
+    Oversett følgende tekst med fokus på å formidle meningsinnholdet presist på naturlig norsk:
 
     {text}"""
 
