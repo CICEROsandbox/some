@@ -86,7 +86,7 @@ def get_word_diffs(original, suggested):
             })
     return changes
 
-elif option == "Clean Up Norwegian Text":
+    elif option == "Clean Up Norwegian Text":
     st.header("Clean Up Norwegian Text")
     
     if 'final_text' not in st.session_state:
