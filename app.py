@@ -2,9 +2,47 @@ import streamlit as st
 import requests
 import difflib
 import re
+import os
 
 API_KEY = os.getenv("CLAUDE_API_KEY") or st.secrets["API_KEY"]
 API_ENDPOINT = "https://api.anthropic.com/v1/messages"
+
+def get_word_diffs(original, suggested):
+    """Get word-by-word differences between original and suggested text"""
+    def split_into_words(text):
+        return re.findall(r'\S+|\s+', text)
+    
+    original_words = split_into_words(original)
+    suggested_words = split_into_words(suggested)
+    
+    matcher = difflib.SequenceMatcher(None, original_words, suggested_words)
+    changes = []
+    
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == 'replace':
+            changes.append({
+                'type': 'change',
+                'original': ''.join(original_words[i1:i2]),
+                'suggested': ''.join(suggested_words[j1:j2])
+            })
+        elif tag == 'delete':
+            changes.append({
+                'type': 'deletion',
+                'original': ''.join(original_words[i1:i2]),
+                'suggested': ''
+            })
+        elif tag == 'insert':
+            changes.append({
+                'type': 'insertion',
+                'original': '',
+                'suggested': ''.join(suggested_words[j1:j2])
+            })
+        elif tag == 'equal':
+            changes.append({
+                'type': 'equal',
+                'text': ''.join(original_words[i1:i2])
+            })
+    return changes
 
 st.title("Norwegian Text Utilities")
 
@@ -48,46 +86,6 @@ if option == "Translate Norwegian to English":
                 error_info = response.json().get('error', {})
                 error_message = error_info.get('message', 'An unknown error occurred.')
                 st.error(f"Error: {response.status_code} - {error_message}")
-
-def get_word_diffs(original, suggested):
-    """Get word-by-word differences between original and suggested text"""
-    def split_into_words(text):
-        return re.findall(r'\S+|\s+', text)
-    
-    original_words = split_into_words(original)
-    suggested_words = split_into_words(suggested)
-    
-    matcher = difflib.SequenceMatcher(None, original_words, suggested_words)
-    changes = []
-    
-    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-        if tag == 'replace':
-            changes.append({
-                'type': 'change',
-                'original': ''.join(original_words[i1:i2]),
-                'suggested': ''.join(suggested_words[j1:j2])
-            })
-        elif tag == 'delete':
-            changes.append({
-                'type': 'deletion',
-                'original': ''.join(original_words[i1:i2]),
-                'suggested': ''
-            })
-        elif tag == 'insert':
-            changes.append({
-                'type': 'insertion',
-                'original': '',
-                'suggested': ''.join(suggested_words[j1:j2])
-            })
-        elif tag == 'equal':
-            changes.append({
-                'type': 'equal',
-                'text': ''.join(original_words[i1:i2])
-            })
-    return changes
-
-if option == "Translate Norwegian to English":
-    # ... translation code ...
 
 elif option == "Clean Up Norwegian Text":
     st.header("Clean Up Norwegian Text")
