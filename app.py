@@ -27,7 +27,11 @@ if option == "Translate Norwegian to English":
             st.warning("Please enter some text to translate.")
         else:
             # Prepare the prompt for the API
-            prompt = f"Translate the following Norwegian text to English:\n\n{norwegian_text}"
+            system_prompt = ""  # Optional system prompt
+            user_input = f"Translate the following Norwegian text to English:\n\n{norwegian_text}"
+
+            # Combine into the formatted prompt
+            prompt = f"{system_prompt}\n\nHuman: {user_input}\n\nAssistant:"
 
             # Set up headers and payload for the API request
             headers = {
@@ -41,7 +45,7 @@ if option == "Translate Norwegian to English":
                 "model": "claude-v1",
                 "max_tokens_to_sample": 1000,
                 "temperature": 0.7,
-                "stop_sequences": [],
+                "stop_sequences": ["\n\nHuman:"],  # To stop the assistant when it's done
                 "stream": False
             }
 
@@ -57,6 +61,7 @@ if option == "Translate Norwegian to English":
                 error_info = response.json().get('error', {})
                 error_message = error_info.get('message', 'An unknown error occurred.')
                 st.error(f"Error: {response.status_code} - {error_message}")
+
 
 elif option == "Clean Up Norwegian Text":
     st.header("Clean Up Norwegian Text")
