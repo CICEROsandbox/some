@@ -54,19 +54,22 @@ def get_word_diffs(original, suggested):
     return changes
 
 def translate_with_context(text, sources):
-    prompt_template = """Du er en ekspert på å oversette klimaforhandlingstekster fra engelsk til norsk. 
-    Når du oversetter:
-    1. Prioriter å formidle meningsinnholdet framfor direkte oversettelse
-    2. For tekniske begreper uten direkte norsk ekvivalent, forklar konseptet på norsk og inkluder det engelske begrepet i parentes
-    3. For komplekse uttrykk, omskriv til naturlig norsk som formidler samme mening
-    4. Legg til korte forklaringer i parentes der det trengs for å klargjøre betydningen
-    
-    Bruk terminologi konsistent med disse norske kildene:
+    prompt_template = """Du er en spesialist i å oversette klimaforhandlingstekster. Din oppgave er å:
+
+    1. Først sjekke referansesidene for hvordan lignende begreper og uttrykk er oversatt:
     {sources}
 
-    Oversett følgende tekst med fokus på å formidle meningsinnholdet presist på naturlig norsk:
+    2. For tekniske termer:
+    - Bruk etablerte norske oversettelser fra referansesidene
+    - For termer som ikke finnes i kildene, beskriv konseptet på norsk og behold engelsk term i parentes
+    - Ved flere brukte oversettelser, vis alternativene
 
-    {text}"""
+    3. Fokuser på å formidle samme mening som i originalteksten, ikke ord-for-ord oversettelse
+
+    Oversett denne teksten:
+    {text}
+
+    Tips: Se spesielt etter hvordan Miljødirektoratet og Regjeringen formulerer lignende konsepter."""
 
     headers = {
         "anthropic-version": "2023-06-01",
