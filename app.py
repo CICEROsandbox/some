@@ -7,6 +7,42 @@ import os
 API_KEY = os.getenv("CLAUDE_API_KEY") or st.secrets["API_KEY"]
 API_ENDPOINT = "https://api.anthropic.com/v1/messages"
 
+def get_word_diffs(original, suggested):
+    def split_into_words(text):
+        return re.findall(r'\S+|\s+', text)
+    
+    original_words = split_into_words(original)
+    suggested_words = split_into_words(suggested)
+    
+    matcher = difflib.SequenceMatcher(None, original_words, suggested_words)
+    changes = []
+    
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == 'replace':
+            changes.append({
+                'type': 'change',
+                'original': ''.join(original_words[i1:i2]),
+                'suggested': ''.join(suggested_words[j1:j2])
+            })
+        elif tag == 'delete':
+            changes.append({
+                'type': 'deletion',
+                'original': ''.join(original_words[i1:i2]),
+                'suggested': ''
+            })
+        elif tag == 'insert':
+            changes.append({
+                'type': 'insertion',
+                'original': '',
+                'suggested': ''.join(suggested_words[j1:j2])
+            })
+        elif tag == 'equal':
+            changes.append({
+                'type': 'equal',
+                'text': ''.join(original_words[i1:i2])
+            })
+    return changes
+
 st.title("Klimaforhandlinger Oversetter")
 
 option = st.sidebar.selectbox(
@@ -57,43 +93,7 @@ if option == "Oversett Engelsk til Norsk":
                 error_message = error_info.get('message', 'En ukjent feil oppstod.')
                 st.error(f"Feil: {response.status_code} - {error_message}")
 
-def get_word_diffs(original, suggested):
-    def split_into_words(text):
-        return re.findall(r'\S+|\s+', text)
-    
-    original_words = split_into_words(original)
-    suggested_words = split_into_words(suggested)
-    
-    matcher = difflib.SequenceMatcher(None, original_words, suggested_words)
-    changes = []
-    
-    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-        if tag == 'replace':
-            changes.append({
-                'type': 'change',
-                'original': ''.join(original_words[i1:i2]),
-                'suggested': ''.join(suggested_words[j1:j2])
-            })
-        elif tag == 'delete':
-            changes.append({
-                'type': 'deletion',
-                'original': ''.join(original_words[i1:i2]),
-                'suggested': ''
-            })
-        elif tag == 'insert':
-            changes.append({
-                'type': 'insertion',
-                'original': '',
-                'suggested': ''.join(suggested_words[j1:j2])
-            })
-        elif tag == 'equal':
-            changes.append({
-                'type': 'equal',
-                'text': ''.join(original_words[i1:i2])
-            })
-    return changes
-
-elif option == "Korrektur Norsk Tekst":
+if option == "Korrektur Norsk Tekst":
     st.header("Korrektur Norsk Tekst")
     
     if 'final_text' not in st.session_state:
