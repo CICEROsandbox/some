@@ -14,6 +14,7 @@ REFERENCE_SITES = [
     "https://www.fn.no/tema/klima-og-miljoe",
     "https://energiogklima.no/",
     "https://snl.no/klimapolitikk"
+    "https://www.miljodirektoratet.no/ansvarsomrader/klima/fns-klimapanel-ipcc/dette-sier-fns-klimapanel/klimabegreper-pa-norsk/"
 ]
 
 def get_word_diffs(original, suggested):
