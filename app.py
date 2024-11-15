@@ -5,6 +5,8 @@ import os
 # Set up your API key and endpoint
 API_KEY = os.getenv("CLAUDE_API_KEY")
 API_ENDPOINT = "https://api.anthropic.com/v1/complete"
+API_KEY = st.secrets["API_KEY"]
+
 
 st.title("Norwegian Text Utilities")
 
