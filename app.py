@@ -1,3 +1,19 @@
+import streamlit as st
+import requests
+import os
+
+# Set up your API key and endpoint
+API_KEY = os.getenv("CLAUDE_API_KEY")
+API_ENDPOINT = "https://api.anthropic.com/v1/complete"
+
+st.title("Norwegian Text Utilities")
+
+# Sidebar navigation
+option = st.sidebar.selectbox(
+    "Choose an option:",
+    ("Translate Norwegian to English", "Clean Up Norwegian Text")
+)
+
 if option == "Translate Norwegian to English":
     st.header("Translate Norwegian to English")
 
@@ -20,7 +36,7 @@ if option == "Translate Norwegian to English":
 
             payload = {
                 "prompt": prompt,
-                "model": "claude-v1",  # Update if necessary
+                "model": "claude-v1",
                 "max_tokens_to_sample": 1000,
                 "temperature": 0.7,
                 "stop_sequences": [],
@@ -36,7 +52,10 @@ if option == "Translate Norwegian to English":
                 st.subheader("Translated Text:")
                 st.write(translated_text)
             else:
-                st.error(f"Error: {response.status_code} - {response.text}")
+                error_info = response.json().get('error', {})
+                error_message = error_info.get('message', 'An unknown error occurred.')
+                st.error(f"Error: {response.status_code} - {error_message}")
+
 elif option == "Clean Up Norwegian Text":
     st.header("Clean Up Norwegian Text")
 
@@ -59,7 +78,7 @@ elif option == "Clean Up Norwegian Text":
 
             payload = {
                 "prompt": prompt,
-                "model": "claude-v1",  # Update if necessary
+                "model": "claude-v1",
                 "max_tokens_to_sample": 1000,
                 "temperature": 0.7,
                 "stop_sequences": [],
@@ -86,4 +105,6 @@ elif option == "Clean Up Norwegian Text":
                     st.info("You have declined the suggestions.")
                     # Additional code to handle declination
             else:
-                st.error(f"Error: {response.status_code} - {response.text}")
+                error_info = response.json().get('error', {})
+                error_message = error_info.get('message', 'An unknown error occurred.')
+                st.error(f"Error: {response.status_code} - {error_message}")
