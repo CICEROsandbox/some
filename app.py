@@ -16,6 +16,42 @@ REFERENCE_SITES = [
     "https://snl.no/klimapolitikk"
 ]
 
+def get_word_diffs(original, suggested):
+    def split_into_words(text):
+        return re.findall(r'\S+|\s+', text)
+    
+    original_words = split_into_words(original)
+    suggested_words = split_into_words(suggested)
+    
+    matcher = difflib.SequenceMatcher(None, original_words, suggested_words)
+    changes = []
+    
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == 'replace':
+            changes.append({
+                'type': 'change',
+                'original': ''.join(original_words[i1:i2]),
+                'suggested': ''.join(suggested_words[j1:j2])
+            })
+        elif tag == 'delete':
+            changes.append({
+                'type': 'deletion',
+                'original': ''.join(original_words[i1:i2]),
+                'suggested': ''
+            })
+        elif tag == 'insert':
+            changes.append({
+                'type': 'insertion',
+                'original': '',
+                'suggested': ''.join(suggested_words[j1:j2])
+            })
+        elif tag == 'equal':
+            changes.append({
+                'type': 'equal',
+                'text': ''.join(original_words[i1:i2])
+            })
+    return changes
+
 def translate_with_context(text, sources):
     prompt_template = """Du er en ekspert på å oversette klimaforhandlingstekster fra engelsk til norsk. 
     Når du oversetter:
@@ -74,7 +110,7 @@ if option == "Oversett Engelsk til Norsk":
             st.warning("Vennligst skriv inn tekst som skal oversettes.")
         else:
             with st.spinner('Oversetter...'):
-                response = translate_with_references(english_text, REFERENCE_SITES)
+                response = translate_with_context(english_text, REFERENCE_SITES)
                 
                 if response.status_code == 200:
                     result = response.json()
