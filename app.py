@@ -1,5 +1,3 @@
-Norwegian Text Cleanup with Word-Level Diffs
-
 import streamlit as st
 import requests
 import difflib
