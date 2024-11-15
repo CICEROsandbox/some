@@ -59,7 +59,7 @@ def translate_with_references(text, sources):
     {sources}
 
     Vær spesielt oppmerksom på tekniske termer. For termer som mangler etablerte norske oversettelser 
-    eller har flere alternativer, inkluder alternativene i parentes. 
+    eller har flere alternativer, inkluder alternativene i parentes. Hvis det ikke finnes gode etablerte termer, gi heller en beskrivelse av hva det er. 
     
     For eksempel:
     - "mitigation" → "utslippsreduksjon (klimagassreduksjon)"
