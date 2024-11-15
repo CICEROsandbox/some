@@ -74,13 +74,17 @@ elif option == "Clean Up Norwegian Text":
             st.warning("Please enter some text to clean up.")
         else:
             # Prepare the prompt for the API
-            prompt = f"Please proofread and suggest improvements for the following Norwegian text. Provide your suggestions:\n\n{norwegian_text}"
+            system_prompt = ""  # Optional system prompt
+            user_input = f"Please proofread and suggest improvements for the following Norwegian text. Provide your suggestions:\n\n{norwegian_text}"
+
+            # Combine into the formatted prompt
+            prompt = f"{system_prompt}\n\nHuman: {user_input}\n\nAssistant:"
 
             # Set up headers and payload for the API request
             headers = {
                 "x-api-key": API_KEY,
                 "Content-Type": "application/json",
-                "anthropic-version": "2023-06-01"  # Replace with the correct API version
+                "anthropic-version": "2023-06-01"
             }
 
             payload = {
@@ -88,7 +92,7 @@ elif option == "Clean Up Norwegian Text":
                 "model": "claude-v1",
                 "max_tokens_to_sample": 1000,
                 "temperature": 0.7,
-                "stop_sequences": [],
+                "stop_sequences": ["\n\nHuman:"],
                 "stream": False
             }
 
@@ -115,3 +119,4 @@ elif option == "Clean Up Norwegian Text":
                 error_info = response.json().get('error', {})
                 error_message = error_info.get('message', 'An unknown error occurred.')
                 st.error(f"Error: {response.status_code} - {error_message}")
+
