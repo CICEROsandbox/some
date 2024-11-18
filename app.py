@@ -1,3 +1,5 @@
+# Part 1: Imports, Configuration, and Core Classes
+
 import streamlit as st
 import requests
 import difflib
@@ -7,16 +9,18 @@ import json
 from datetime import datetime
 from typing import Dict, List, Tuple
 
+# API Configuration
 API_KEY = os.getenv("CLAUDE_API_KEY") or st.secrets["API_KEY"]
 API_ENDPOINT = "https://api.anthropic.com/v1/messages"
 
+# Reference Sources
 REFERENCE_SITES = [
     "https://www.miljodirektoratet.no/ansvarsomrader/klima/fns-klimapanel-ipcc/dette-sier-fns-klimapanel/klimabegreper-pa-norsk/",
     "https://www.ipcc.ch/glossary/",
     "https://unfccc.int/process-and-meetings/the-convention/glossary-of-climate-change-acronyms-and-terms"
 ]
 
-# Initialize session state for translation memory
+# Initialize session state
 if 'translation_memory' not in st.session_state:
     st.session_state.translation_memory = {}
 
@@ -29,39 +33,6 @@ def load_technical_terms():
         "klimafinansiering": "climate finance",
         "karbonbudsjett": "carbon budget",
     }
-
-# Add caching for API responses
-@st.cache_data(ttl=3600)  # Cache for 1 hour
-def cached_translate_with_context(text, direction, sources):
-    return translate_with_context(text, direction, sources)
-
-# Batch processing for multiple translations
-def batch_translate(texts: List[str], direction: str, sources: List[str]):
-    results = []
-    for text in texts:
-        result = cached_translate_with_context(text, direction, sources)
-        results.append(result)
-    return results
-
-class TerminologyConsistency:
-    def __init__(self):
-        self.term_usage = {}
-        
-    def track_term(self, term: str, translation: str, context: str):
-        if term not in self.term_usage:
-            self.term_usage[term] = {}
-        if translation not in self.term_usage[term]:
-            self.term_usage[term][translation] = []
-        self.term_usage[term][translation].append(context)
-        
-    def get_consistency_report(self) -> Dict:
-        return {
-            term: {
-                'translations': translations,
-                'consistent': len(translations) == 1
-            }
-            for term, translations in self.term_usage.items()
-        }
 
 class TranslationQuality:
     def __init__(self):
@@ -98,6 +69,7 @@ class TranslationQuality:
                 "reference": self.reference_sites[1]
             }
         }
+
     def validate_translation(self, original: str, translated: str, direction: str) -> List[Dict]:
         """Enhanced validation that includes existing checks plus new ones."""
         issues = []
@@ -134,8 +106,9 @@ class TranslationQuality:
         
         return issues
 
-# These functions should be outside the class
-def get_word_diffs(original, suggested):
+# Part 2: Translation Memory and Core Translation Functions
+
+def get_word_diffs(original: str, suggested: str) -> List[Dict]:
     """Get word-level differences between original and suggested texts."""
     def split_into_words(text):
         return re.findall(r'\S+|\s+', text)
@@ -172,7 +145,7 @@ def get_word_diffs(original, suggested):
             })
     return changes
 
-def update_translation_memory(original, translated, direction):
+def update_translation_memory(original: str, translated: str, direction: str) -> None:
     """Update translation memory with new translations."""
     key = f"{original.strip().lower()}_{direction}"
     if key not in st.session_state.translation_memory:
@@ -182,45 +155,25 @@ def update_translation_memory(original, translated, direction):
             'direction': direction
         }
 
-def get_from_translation_memory(text, direction):
+def get_from_translation_memory(text: str, direction: str) -> str:
     """Retrieve translation from memory if available."""
     key = f"{text.strip().lower()}_{direction}"
     if key in st.session_state.translation_memory:
         return st.session_state.translation_memory[key]['translation']
     return None
 
-def enhanced_translate_with_context(text, direction, sources):
-    try:
-        response = translate_with_context(text, direction, sources)
-        if not response or 'status_code' not in response:
-            return {
-                'status_code': 500,
-                'error': {'message': 'Invalid response format'}
-            }
-        return response
-    except requests.RequestException as e:
-        return {
-            'status_code': 500,
-            'error': {'message': f'API request failed: {str(e)}'}
-        }
-    except Exception as e:
-        return {
-            'status_code': 500,
-            'error': {'message': f'Unexpected error: {str(e)}'}
-        }
-
-def calculate_quality_metrics(translations: List[Dict]) -> Dict:
-    return {
-        'total_translations': len(translations),
-        'technical_terms_used': sum(1 for t in translations if t.get('technical_terms')),
-        'quality_issues': {
-            'high': sum(1 for t in translations for i in t.get('validation', []) if i['severity'] == 'high'),
-            'medium': sum(1 for t in translations for i in t.get('validation', []) if i['severity'] == 'medium'),
-            'low': sum(1 for t in translations for i in t.get('validation', []) if i['severity'] == 'low')
-        },
-        'average_response_time': sum(t.get('response_time', 0) for t in translations) / len(translations)
-    }
+def translate_with_context(text: str, direction: str, sources: List[str]) -> Dict:
+    """
+    Translate text with context while checking quality and terminology.
+    """
+    quality_checker = TranslationQuality()
     
+    # First check translation memory
+    cached_translation = get_from_translation_memory(text, direction)
+    if cached_translation:
+        st.info("Retrieved from translation memory")
+        return {'status_code': 200, 'content': [{'text': cached_translation}]}
+
     if direction == "no-to-en":
         prompt_template = """You are a specialist in translating climate negotiation texts from Norwegian to English. Your task is to:
 
@@ -282,25 +235,37 @@ def calculate_quality_metrics(translations: List[Dict]) -> Dict:
         "temperature": 0.3
     }
 
-    response = requests.post(API_ENDPOINT, headers=headers, json=payload)
-    
-    if response.status_code == 200:
-        result = response.json()
-        translated_text = result["content"][0]["text"]
+    try:
+        response = requests.post(API_ENDPOINT, headers=headers, json=payload)
         
-        # Validate translation using our quality checker
-        validation_results = quality_checker.validate_translation(text, translated_text, direction)
-        
-        # Create a modified response that includes both translation and validation
+        if response.status_code == 200:
+            result = response.json()
+            translated_text = result["content"][0]["text"]
+            
+            # Validate translation using our quality checker
+            validation_results = quality_checker.validate_translation(text, translated_text, direction)
+            
+            # Update translation memory
+            update_translation_memory(text, translated_text, direction)
+            
+            # Create a modified response that includes both translation and validation
+            return {
+                'status_code': 200,
+                'content': [{'text': translated_text}],
+                'validation': validation_results
+            }
+        else:
+            return {
+                'status_code': response.status_code,
+                'error': {'message': f"API error: {response.text}"}
+            }
+    except Exception as e:
         return {
-            'status_code': 200,
-            'content': [{'text': translated_text}],
-            'validation': validation_results
+            'status_code': 500,
+            'error': {'message': f"Translation error: {str(e)}"}
         }
-    
-    return response
 
-def review_norwegian_text(text):
+def review_norwegian_text(text: str) -> Dict:
     """Review and correct Norwegian text."""
     headers = {
         "anthropic-version": "2023-06-01",
@@ -330,26 +295,21 @@ def review_norwegian_text(text):
         "temperature": 0.3
     }
 
-    return requests.post(API_ENDPOINT, headers=headers, json=payload)
+    try:
+        response = requests.post(API_ENDPOINT, headers=headers, json=payload)
+        return response.json() if response.status_code == 200 else {
+            'status_code': response.status_code,
+            'error': {'message': f"Review error: {response.text}"}
+        }
+    except Exception as e:
+        return {
+            'status_code': 500,
+            'error': {'message': f"Review error: {str(e)}"}
+        }
 
-# Streamlit UI
-st.title("Climate Negotiations Translator")
-
-# Sidebar with translation memory stats
-with st.sidebar:
-    st.subheader("Translation Memory Stats")
-    st.write(f"Cached translations: {len(st.session_state.translation_memory)}")
-    if st.button("Clear Translation Memory"):
-        st.session_state.translation_memory = {}
-        st.success("Translation memory cleared!")
-
-option = st.sidebar.selectbox(
-    "Select function:",
-    ("Norwegian to English", "English to Norwegian", "Norwegian Text Review")
-)
-
-if option in ["Norwegian to English", "English to Norwegian"]:
-    st.header(option)
+def render_translation_ui():
+    """Render the translation interface."""
+    st.header("Translation")
     
     with st.expander("Reference Sources"):
         st.write("The translation uses terminology from the following sources:")
@@ -361,61 +321,63 @@ if option in ["Norwegian to English", "English to Norwegian"]:
         placeholder="Enter the text you want to translate..."
     )
 
-if st.button("Translate"):
-    if input_text.strip() == "":
-        st.warning("Please enter text to translate.")
-    else:
-        with st.spinner('Translating...'):
-            direction = "no-to-en" if option == "Norwegian to English" else "en-to-no"
-            response = translate_with_context(input_text, direction, REFERENCE_SITES)
-            
-            if response.get('status_code') == 200:
-                translated_text = response['content'][0]['text']
+    if st.button("Translate"):
+        if input_text.strip() == "":
+            st.warning("Please enter text to translate.")
+        else:
+            with st.spinner('Translating...'):
+                option = st.session_state.get('current_option', 'Norwegian to English')
+                direction = "no-to-en" if option == "Norwegian to English" else "en-to-no"
+                response = translate_with_context(input_text, direction, REFERENCE_SITES)
                 
-                # Display validation results with severity levels
-                if 'validation' in response and response['validation']:
-                    with st.expander("Translation Quality Check"):
-                        for issue in response['validation']:
-                            # Display severity with colored icons
-                            severity_icon = {
-                                'high': '🔴',
-                                'medium': '🟡',
-                                'low': '🔵'
-                            }.get(issue['severity'], '🔵')
-                            
-                            # Display the issue message
-                            st.markdown(f"{severity_icon} **{issue['type'].title()}:** {issue['message']}")
-                            
-                            # Display source and reference if available
-                            if 'source' in issue:
-                                st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;**Source:** {issue['source']}")
-                            if 'reference' in issue:
-                                st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;**Reference:** [{issue['source']}]({issue['reference']})")
-                            st.write("---")
-                
-                st.subheader("Translated text:")
-                st.write(translated_text)
-                
-                # Show technical terms used
-                with st.expander("Technical Terms Used"):
-                    quality_checker = TranslationQuality()
-                    terms = quality_checker.technical_terms
-                    used_terms = [term for term in terms.keys() if term.lower() in input_text.lower()]
-                    if used_terms:
-                        st.write("Technical terms identified:")
-                        for term in used_terms:
-                            term_info = terms[term]
-                            st.markdown(f"**{term}** → {term_info['english']}")
-                            st.markdown(f"- Source: {term_info['source']}")
-                            st.markdown(f"- Context: {term_info['context']}")
-                    else:
-                        st.info("No technical terms were identified in the text.")
-            else:
-                error_info = response.get('error', {})
-                error_message = error_info.get('message', 'An unknown error occurred.')
-                st.error(f"Error: {response.get('status_code')} - {error_message}")
+                if response.get('status_code') == 200:
+                    translated_text = response['content'][0]['text']
+                    
+                    # Display validation results with severity levels
+                    if 'validation' in response and response['validation']:
+                        with st.expander("Translation Quality Check"):
+                            for issue in response['validation']:
+                                # Display severity with colored icons
+                                severity_icon = {
+                                    'high': '🔴',
+                                    'medium': '🟡',
+                                    'low': '🔵'
+                                }.get(issue['severity'], '🔵')
+                                
+                                # Display the issue message
+                                st.markdown(f"{severity_icon} **{issue['type'].title()}:** {issue['message']}")
+                                
+                                # Display source and reference if available
+                                if 'source' in issue:
+                                    st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;**Source:** {issue['source']}")
+                                if 'reference' in issue:
+                                    st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;**Reference:** [{issue['source']}]({issue['reference']})")
+                                st.write("---")
+                    
+                    st.subheader("Translated text:")
+                    st.write(translated_text)
+                    
+                    # Show technical terms used
+                    with st.expander("Technical Terms Used"):
+                        quality_checker = TranslationQuality()
+                        terms = quality_checker.technical_terms
+                        used_terms = [term for term in terms.keys() if term.lower() in input_text.lower()]
+                        if used_terms:
+                            st.write("Technical terms identified:")
+                            for term in used_terms:
+                                term_info = terms[term]
+                                st.markdown(f"**{term}** → {term_info['english']}")
+                                st.markdown(f"- Source: {term_info['source']}")
+                                st.markdown(f"- Context: {term_info['context']}")
+                        else:
+                            st.info("No technical terms were identified in the text.")
+                else:
+                    error_info = response.get('error', {})
+                    error_message = error_info.get('message', 'An unknown error occurred.')
+                    st.error(f"Error: {response.get('status_code')} - {error_message}")
 
-elif option == "Norwegian Text Review":
+def render_review_ui():
+    """Render the Norwegian text review interface."""
     st.header("Norwegian Text Review")
     
     if 'final_text' not in st.session_state:
@@ -430,7 +392,7 @@ elif option == "Norwegian Text Review":
             with st.spinner('Reviewing...'):
                 response = review_norwegian_text(norwegian_text)
                 
-                if response.status_code == 200:
+                if response.get('status_code') == 200:
                     result = response.json()
                     suggested_text = result["content"][0]["text"]
                     
@@ -456,10 +418,13 @@ elif option == "Norwegian Text Review":
                             
                             with col3:
                                 if st.button("Accept", key=f"accept_{i}"):
-                                    final_text = final_text.replace(
-                                        change['original'] if change['type'] != 'insertion' else '',
-                                        change['suggested']
-                                    )
+                                    if change['type'] == 'deletion':
+                                        final_text = final_text.replace(change['original'], '')
+                                    else:
+                                        final_text = final_text.replace(
+                                            change['original'] if change['type'] != 'insertion' else '',
+                                            change['suggested']
+                                        )
                                     st.session_state.final_text = final_text
                                 
                                 if st.button("Reject", key=f"decline_{i}"):
@@ -468,6 +433,123 @@ elif option == "Norwegian Text Review":
                     st.subheader("Final text:")
                     st.write(st.session_state.final_text or final_text)
                 else:
-                    error_info = response.json().get('error', {})
+                    error_info = response.get('error', {})
                     error_message = error_info.get('message', 'An unknown error occurred.')
                     st.error(f"Error: {response.status_code} - {error_message}")
+
+def render_sidebar():
+    """Render the sidebar with translation memory stats and options."""
+    with st.sidebar:
+        st.subheader("Translation Memory Stats")
+        st.write(f"Cached translations: {len(st.session_state.translation_memory)}")
+        if st.button("Clear Translation Memory"):
+            st.session_state.translation_memory = {}
+            st.success("Translation memory cleared!")
+
+        st.session_state.current_option = st.selectbox(
+            "Select function:",
+            ("Norwegian to English", "English to Norwegian", "Norwegian Text Review")
+        )
+
+def initialize_app():
+    """Initialize the application state and configurations."""
+    st.set_page_config(
+        page_title="Climate Negotiations Translator",
+        page_icon="🌍",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+
+    # Initialize session states if they don't exist
+    if 'current_option' not in st.session_state:
+        st.session_state.current_option = "Norwegian to English"
+    
+    if 'final_text' not in st.session_state:
+        st.session_state.final_text = ""
+
+    # Set up any required environment variables or configurations
+    if not API_KEY:
+        st.error("API key not found. Please set the CLAUDE_API_KEY environment variable or add it to your secrets.")
+        st.stop()
+
+def display_usage_stats():
+    """Display usage statistics in the sidebar."""
+    with st.sidebar:
+        st.markdown("---")
+        st.subheader("Usage Statistics")
+        total_translations = len(st.session_state.translation_memory)
+        st.metric("Total Translations", total_translations)
+        
+        # Calculate success rate
+        if hasattr(st.session_state, 'translation_attempts'):
+            success_rate = (total_translations / st.session_state.translation_attempts) * 100
+            st.metric("Success Rate", f"{success_rate:.1f}%")
+
+def main():
+    """Main application entry point."""
+    try:
+        # Initialize the application
+        initialize_app()
+
+        # Main title
+        st.title("Climate Negotiations Translator")
+        
+        # Render sidebar
+        render_sidebar()
+        
+        # Display usage statistics
+        display_usage_stats()
+
+        # Main content area
+        if st.session_state.current_option in ["Norwegian to English", "English to Norwegian"]:
+            render_translation_ui()
+        else:
+            render_review_ui()
+
+    except Exception as e:
+        st.error(f"An unexpected error occurred: {str(e)}")
+        if st.checkbox("Show error details"):
+            st.exception(e)
+
+def handle_keyboard_shortcuts():
+    """Handle keyboard shortcuts for the application."""
+    # This can be expanded based on needs
+    pass
+
+# Add any cleanup or shutdown handlers
+def cleanup():
+    """Perform any necessary cleanup when the application shuts down."""
+    # This can be expanded based on needs
+    pass
+
+# Error tracking (optional, for production use)
+def log_error(error: Exception, context: str = None):
+    """Log errors for monitoring and debugging."""
+    timestamp = datetime.now().isoformat()
+    error_log = {
+        'timestamp': timestamp,
+        'error': str(error),
+        'type': type(error).__name__,
+        'context': context
+    }
+    
+    # In a production environment, you might want to send this to a logging service
+    print(f"Error occurred: {error_log}")  # Replace with proper logging
+
+# Development helper functions
+def debug_mode():
+    """Enable debug mode with additional logging and information."""
+    if st.sidebar.checkbox("Enable Debug Mode"):
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("Debug Information")
+        st.sidebar.json(st.session_state.to_dict())
+
+# Entry point of the application
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        log_error(e, "Application startup")
+        st.error("The application failed to start. Please try refreshing the page.")
+    finally:
+        cleanup()
