@@ -156,14 +156,25 @@ def get_from_translation_memory(text, direction):
         return st.session_state.translation_memory[key]['translation']
     return None
 
-def translate_with_context(text, direction, sources):
-    quality_checker = TranslationQuality()
-    
-    # First check translation memory
-    cached_translation = get_from_translation_memory(text, direction)
-    if cached_translation:
-        st.info("Retrieved from translation memory")
-        return {'status_code': 200, 'content': [{'text': cached_translation}]}
+def enhanced_translate_with_context(text, direction, sources):
+    try:
+        response = translate_with_context(text, direction, sources)
+        if not response or 'status_code' not in response:
+            return {
+                'status_code': 500,
+                'error': {'message': 'Invalid response format'}
+            }
+        return response
+    except requests.RequestException as e:
+        return {
+            'status_code': 500,
+            'error': {'message': f'API request failed: {str(e)}'}
+        }
+    except Exception as e:
+        return {
+            'status_code': 500,
+            'error': {'message': f'Unexpected error: {str(e)}'}
+        }
 
     if direction == "no-to-en":
         prompt_template = """You are a specialist in translating climate negotiation texts from Norwegian to English. Your task is to:
