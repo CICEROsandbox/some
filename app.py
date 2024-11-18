@@ -307,15 +307,44 @@ def review_norwegian_text(text: str) -> Dict:
             'error': {'message': f"Review error: {str(e)}"}
         }
 
+def calculate_text_area_height(text: str, min_height: int = 300, max_height: int = 800) -> int:
+    """
+    Calculate appropriate text area height based on content.
+    
+    Args:
+        text: The text content
+        min_height: Minimum height in pixels
+        max_height: Maximum height in pixels
+        
+    Returns:
+        Calculated height in pixels
+    """
+    if not text:
+        return min_height
+        
+    # Calculate based on number of lines
+    line_count = len(text.split('\n'))
+    # Approximate pixels per line (assuming default font size)
+    pixels_per_line = 24
+    # Add some padding
+    padding = 50
+    
+    calculated_height = (line_count * pixels_per_line) + padding
+    
+    # Ensure height stays within bounds
+    return max(min_height, min(calculated_height, max_height))
+
 def render_translation_ui():
-    """Render the translation interface with side-by-side comparison and editable results."""
+    """Render the translation interface with adaptive text areas."""
     st.header("Translation")
     
     # Initialize session states if they don't exist
     if 'translation_result' not in st.session_state:
         st.session_state.translation_result = ""
         st.session_state.original_translation = ""
-        st.session_state.last_response = None  # Store the last translation response
+        st.session_state.last_response = None
+        st.session_state.input_height = 300  # Default height
+        st.session_state.output_height = 300  # Default height
     
     with st.expander("Reference Sources"):
         st.write("The translation uses terminology from the following sources:")
@@ -325,22 +354,36 @@ def render_translation_ui():
     # Create two columns for side-by-side view
     col1, col2 = st.columns(2)
     
+    # Calculate heights based on content
+    input_height = calculate_text_area_height(
+        st.session_state.get('input_text', ''),
+        min_height=300,
+        max_height=800
+    )
+    output_height = calculate_text_area_height(
+        st.session_state.get('translation_result', ''),
+        min_height=300,
+        max_height=800
+    )
+    
+    # Use the larger of the two heights for both areas
+    unified_height = max(input_height, output_height)
+    
     with col1:
         st.subheader("Original Text")
         input_text = st.text_area(
             "Enter text to translate:",
             placeholder="Enter the text you want to translate...",
-            height=300,
+            height=unified_height,
             key="input_text"
         )
 
     with col2:
         st.subheader("Translation")
-        # Editable translation area
         edited_translation = st.text_area(
             "Translated text (editable):",
             value=st.session_state.translation_result,
-            height=300,
+            height=unified_height,
             key="edited_translation"
         )
         
@@ -368,7 +411,12 @@ def render_translation_ui():
                         translated_text = response['content'][0]['text']
                         st.session_state.translation_result = translated_text
                         st.session_state.original_translation = translated_text
-                        st.session_state.last_response = response  # Store the response
+                        st.session_state.last_response = response
+                        
+                        # Update heights based on new content
+                        st.session_state.input_height = calculate_text_area_height(input_text)
+                        st.session_state.output_height = calculate_text_area_height(translated_text)
+                        
                         st.rerun()
                     else:
                         error_info = response.get('error', {})
@@ -387,7 +435,12 @@ def render_translation_ui():
             st.session_state.original_translation = ""
             st.session_state.last_response = None
             st.session_state.input_text = ""
+            st.session_state.input_height = 300
+            st.session_state.output_height = 300
             st.rerun()
+    
+    # Rest of your code for analysis section...
+    # [Previous analysis section code remains the same]
     
     # Create a separate section for feedback and analysis
     if st.session_state.translation_result and st.session_state.last_response:
