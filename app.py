@@ -5,6 +5,7 @@ import re
 import os
 import json
 from datetime import datetime
+from typing import Dict, List, Tuple
 
 API_KEY = os.getenv("CLAUDE_API_KEY") or st.secrets["API_KEY"]
 API_ENDPOINT = "https://api.anthropic.com/v1/messages"
@@ -14,6 +15,20 @@ REFERENCE_SITES = [
     "https://www.ipcc.ch/glossary/",
     "https://unfccc.int/process-and-meetings/the-convention/glossary-of-climate-change-acronyms-and-terms"
 ]
+
+# Initialize session state for translation memory
+if 'translation_memory' not in st.session_state:
+    st.session_state.translation_memory = {}
+
+def load_technical_terms():
+    """Load technical terms and their translations."""
+    return {
+        "klimaendringer": "climate change",
+        "klimatilpasning": "climate adaptation",
+        "utslippsreduksjon": "emission reduction",
+        "klimafinansiering": "climate finance",
+        "karbonbudsjett": "carbon budget",
+    }
 
 class TranslationQuality:
     def __init__(self):
@@ -50,8 +65,7 @@ class TranslationQuality:
                 "reference": self.reference_sites[1]
             }
         }
-
-    def validate_translation(self, original: str, translated: str, direction: str) -> List[Dict]:
+        def validate_translation(self, original: str, translated: str, direction: str) -> List[Dict]:
         """Enhanced validation that includes existing checks plus new ones."""
         issues = []
         
@@ -88,6 +102,7 @@ class TranslationQuality:
         return issues
 
 def get_word_diffs(original, suggested):
+    """Get word-level differences between original and suggested texts."""
     def split_into_words(text):
         return re.findall(r'\S+|\s+', text)
     
@@ -152,11 +167,46 @@ def translate_with_context(text, direction, sources):
         return {'status_code': 200, 'content': [{'text': cached_translation}]}
 
     if direction == "no-to-en":
-        prompt_template = """You are a specialist in translating climate negotiation texts from Norwegian to English..."""
-        # Rest of your prompt template
+        prompt_template = """You are a specialist in translating climate negotiation texts from Norwegian to English. Your task is to:
+
+        1. First check the reference pages for how similar concepts and expressions are translated:
+        {sources}
+
+        2. For technical terms:
+        - Use established English translations from authoritative sources
+        - For terms without direct translations, describe the concept in English and keep Norwegian term in parentheses
+        - When multiple translations exist, use the most widely accepted one
+        - Maintain consistency with IPCC and UNFCCC terminology
+
+        3. Focus on conveying the same meaning as the original text, not word-for-word translation
+
+        4. Ensure the translation:
+        - Uses appropriate formal language for climate negotiations
+        - Maintains technical precision
+        - Follows standard English capitalization and punctuation rules
+        - Preserves any specific references to Norwegian policies or institutions
+
+        Translate this text from Norwegian to English:
+        {text}
+
+        Note: Pay special attention to how technical terms are used in IPCC reports and UNFCCC documents."""
     else:
-        prompt_template = """Du er en spesialist i å oversette klimaforhandlingstekster..."""
-        # Rest of your prompt template
+        prompt_template = """Du er en spesialist i å oversette klimaforhandlingstekster fra engelsk til norsk. Din oppgave er å:
+
+        1. Først sjekke referansesidene for hvordan lignende begreper og uttrykk er oversatt:
+        {sources}
+
+        2. For tekniske termer:
+        - Bruk etablerte norske oversettelser fra referansesidene
+        - For termer som ikke finnes i kildene, beskriv konseptet på norsk og behold engelsk term i parentes
+        - Ved flere brukte oversettelser, vis alternativene
+
+        3. Fokuser på å formidle samme mening som i originalteksten, ikke ord-for-ord oversettelse
+
+        Oversett denne teksten:
+        {text}
+
+        Tips: Se spesielt etter hvordan Miljødirektoratet og Regjeringen formulerer lignende konsepter."""
 
     headers = {
         "anthropic-version": "2023-06-01",
@@ -266,24 +316,32 @@ if option in ["Norwegian to English", "English to Norwegian"]:
                     result = response.json()
                     translated_text = result["content"][0]["text"]
                     
-                    # Validate translation
-                    issues = validate_translation(input_text, translated_text, direction)
-                    if issues:
-                        st.warning("Potential translation issues:")
-                        for issue in issues:
-                            st.write(f"- {issue}")
+                    # Display validation results with severity levels
+                    if 'validation' in result and result['validation']:
+                        with st.expander("Translation Quality Check"):
+                            for issue in result['validation']:
+                                severity_icon = "🔴" if issue['severity'] == 'high' else "🟡" if issue['severity'] == 'medium' else "🔵"
+                                st.write(f"{severity_icon} {issue['message']}")
+                                if 'source' in issue:
+                                    st.write(f"Source: {issue['source']}")
+                                if 'reference' in issue:
+                                    st.write(f"Reference: {issue['reference']}")
                     
                     st.subheader("Translated text:")
                     st.write(translated_text)
                     
                     # Show technical terms used
                     with st.expander("Technical Terms Used"):
-                        terms = load_technical_terms()
+                        quality_checker = TranslationQuality()
+                        terms = quality_checker.technical_terms
                         used_terms = [term for term in terms.keys() if term.lower() in input_text.lower()]
                         if used_terms:
                             st.write("Technical terms identified:")
                             for term in used_terms:
-                                st.write(f"- {term} → {terms[term]}")
+                                term_info = terms[term]
+                                st.write(f"- {term} → {term_info['english']}")
+                                st.write(f"  Source: {term_info['source']}")
+                                st.write(f"  Context: {term_info['context']}")
                 else:
                     error_info = response.json().get('error', {})
                     error_message = error_info.get('message', 'An unknown error occurred.')
@@ -304,17 +362,44 @@ elif option == "Norwegian Text Review":
             with st.spinner('Reviewing...'):
                 response = review_norwegian_text(norwegian_text)
                 
-if response.status_code == 200:
-    result = response.json()
-    translated_text = result["content"][0]["text"]
-    
-    # Display validation results with severity levels
-    if 'validation' in result and result['validation']:
-        with st.expander("Translation Quality Check"):
-            for issue in result['validation']:
-                severity_icon = "🔴" if issue['severity'] == 'high' else "🟡" if issue['severity'] == 'medium' else "🔵"
-                st.write(f"{severity_icon} {issue['message']}")
-                if 'source' in issue:
-                    st.write(f"Source: {issue['source']}")
-                if 'reference' in issue:
-                    st.write(f"Reference: {issue['reference']}")
+                if response.status_code == 200:
+                    result = response.json()
+                    suggested_text = result["content"][0]["text"]
+                    
+                    changes = get_word_diffs(norwegian_text, suggested_text)
+                    
+                    st.subheader("Review changes:")
+                    
+                    final_text = norwegian_text
+                    
+                    for i, change in enumerate(changes):
+                        if change['type'] == 'equal':
+                            st.write(change['text'], end='')
+                        else:
+                            col1, col2, col3 = st.columns([2,2,1])
+                            
+                            if change['type'] in ['change', 'deletion']:
+                                with col1:
+                                    st.markdown(f"**Original:** _{change['original']}_")
+                                    
+                            if change['type'] in ['change', 'insertion']:
+                                with col2:
+                                    st.markdown(f"**Suggested:** _{change['suggested']}_")
+                            
+                            with col3:
+                                if st.button("Accept", key=f"accept_{i}"):
+                                    final_text = final_text.replace(
+                                        change['original'] if change['type'] != 'insertion' else '',
+                                        change['suggested']
+                                    )
+                                    st.session_state.final_text = final_text
+                                
+                                if st.button("Reject", key=f"decline_{i}"):
+                                    st.session_state.final_text = final_text
+                    
+                    st.subheader("Final text:")
+                    st.write(st.session_state.final_text or final_text)
+                else:
+                    error_info = response.json().get('error', {})
+                    error_message = error_info.get('message', 'An unknown error occurred.')
+                    st.error(f"Error: {response.status_code} - {error_message}")
