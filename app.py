@@ -311,6 +311,12 @@ def render_translation_ui():
     """Render the translation interface with side-by-side comparison and editable results."""
     st.header("Translation")
     
+    # Initialize session states if they don't exist
+    if 'translation_result' not in st.session_state:
+        st.session_state.translation_result = ""
+        st.session_state.original_translation = ""
+        st.session_state.last_response = None  # Store the last translation response
+    
     with st.expander("Reference Sources"):
         st.write("The translation uses terminology from the following sources:")
         for site in REFERENCE_SITES:
@@ -330,11 +336,6 @@ def render_translation_ui():
 
     with col2:
         st.subheader("Translation")
-        # Initialize session state for edited translation if it doesn't exist
-        if 'translation_result' not in st.session_state:
-            st.session_state.translation_result = ""
-            st.session_state.original_translation = ""  # Store original translation for comparison
-        
         # Editable translation area
         edited_translation = st.text_area(
             "Translated text (editable):",
@@ -366,9 +367,8 @@ def render_translation_ui():
                     if response.get('status_code') == 200:
                         translated_text = response['content'][0]['text']
                         st.session_state.translation_result = translated_text
-                        st.session_state.original_translation = translated_text  # Store original translation
-                        
-                        # Rerun to update the UI
+                        st.session_state.original_translation = translated_text
+                        st.session_state.last_response = response  # Store the response
                         st.rerun()
                     else:
                         error_info = response.get('error', {})
@@ -385,16 +385,17 @@ def render_translation_ui():
         if st.button("Clear All"):
             st.session_state.translation_result = ""
             st.session_state.original_translation = ""
+            st.session_state.last_response = None
             st.session_state.input_text = ""
             st.rerun()
     
     # Create a separate section for feedback and analysis
-    if st.session_state.translation_result:
+    if st.session_state.translation_result and st.session_state.last_response:
         with st.expander("Translation Analysis", expanded=True):
             # Display validation results with severity levels
-            if 'validation' in response and response['validation']:
+            if 'validation' in st.session_state.last_response:
                 st.subheader("Quality Check Results")
-                for issue in response['validation']:
+                for issue in st.session_state.last_response['validation']:
                     severity_icon = {
                         'high': '🔴',
                         'medium': '🟡',
