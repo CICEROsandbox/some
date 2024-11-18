@@ -65,7 +65,7 @@ class TranslationQuality:
                 "reference": self.reference_sites[1]
             }
         }
-        def validate_translation(self, original: str, translated: str, direction: str) -> List[Dict]:
+    def validate_translation(self, original: str, translated: str, direction: str) -> List[Dict]:
         """Enhanced validation that includes existing checks plus new ones."""
         issues = []
         
@@ -101,6 +101,7 @@ class TranslationQuality:
         
         return issues
 
+# These functions should be outside the class
 def get_word_diffs(original, suggested):
     """Get word-level differences between original and suggested texts."""
     def split_into_words(text):
