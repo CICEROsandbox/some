@@ -43,6 +43,26 @@ def batch_translate(texts: List[str], direction: str, sources: List[str]):
         results.append(result)
     return results
 
+class TerminologyConsistency:
+    def __init__(self):
+        self.term_usage = {}
+        
+    def track_term(self, term: str, translation: str, context: str):
+        if term not in self.term_usage:
+            self.term_usage[term] = {}
+        if translation not in self.term_usage[term]:
+            self.term_usage[term][translation] = []
+        self.term_usage[term][translation].append(context)
+        
+    def get_consistency_report(self) -> Dict:
+        return {
+            term: {
+                'translations': translations,
+                'consistent': len(translations) == 1
+            }
+            for term, translations in self.term_usage.items()
+        }
+
 class TranslationQuality:
     def __init__(self):
         self.reference_sites = REFERENCE_SITES
