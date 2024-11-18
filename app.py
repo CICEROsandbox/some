@@ -209,6 +209,18 @@ def enhanced_translate_with_context(text, direction, sources):
             'error': {'message': f'Unexpected error: {str(e)}'}
         }
 
+def calculate_quality_metrics(translations: List[Dict]) -> Dict:
+    return {
+        'total_translations': len(translations),
+        'technical_terms_used': sum(1 for t in translations if t.get('technical_terms')),
+        'quality_issues': {
+            'high': sum(1 for t in translations for i in t.get('validation', []) if i['severity'] == 'high'),
+            'medium': sum(1 for t in translations for i in t.get('validation', []) if i['severity'] == 'medium'),
+            'low': sum(1 for t in translations for i in t.get('validation', []) if i['severity'] == 'low')
+        },
+        'average_response_time': sum(t.get('response_time', 0) for t in translations) / len(translations)
+    }
+    
     if direction == "no-to-en":
         prompt_template = """You are a specialist in translating climate negotiation texts from Norwegian to English. Your task is to:
 
