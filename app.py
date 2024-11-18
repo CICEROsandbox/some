@@ -308,76 +308,7 @@ def review_norwegian_text(text: str) -> Dict:
         }
 
 def render_translation_ui():
-    """Render the translation interface."""
-    st.header("Translation")
-    
-    with st.expander("Reference Sources"):
-        st.write("The translation uses terminology from the following sources:")
-        for site in REFERENCE_SITES:
-            st.write(f"- {site}")
-    
-    input_text = st.text_area(
-        "Enter text to translate:",
-        placeholder="Enter the text you want to translate..."
-    )
-
-    if st.button("Translate"):
-        if input_text.strip() == "":
-            st.warning("Please enter text to translate.")
-        else:
-            with st.spinner('Translating...'):
-                option = st.session_state.get('current_option', 'Norwegian to English')
-                direction = "no-to-en" if option == "Norwegian to English" else "en-to-no"
-                response = translate_with_context(input_text, direction, REFERENCE_SITES)
-                
-                if response.get('status_code') == 200:
-                    translated_text = response['content'][0]['text']
-                    
-                    # Display validation results with severity levels
-                    if 'validation' in response and response['validation']:
-                        with st.expander("Translation Quality Check"):
-                            for issue in response['validation']:
-                                # Display severity with colored icons
-                                severity_icon = {
-                                    'high': '🔴',
-                                    'medium': '🟡',
-                                    'low': '🔵'
-                                }.get(issue['severity'], '🔵')
-                                
-                                # Display the issue message
-                                st.markdown(f"{severity_icon} **{issue['type'].title()}:** {issue['message']}")
-                                
-                                # Display source and reference if available
-                                if 'source' in issue:
-                                    st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;**Source:** {issue['source']}")
-                                if 'reference' in issue:
-                                    st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;**Reference:** [{issue['source']}]({issue['reference']})")
-                                st.write("---")
-                    
-                    st.subheader("Translated text:")
-                    st.write(translated_text)
-                    
-                    # Show technical terms used
-                    with st.expander("Technical Terms Used"):
-                        quality_checker = TranslationQuality()
-                        terms = quality_checker.technical_terms
-                        used_terms = [term for term in terms.keys() if term.lower() in input_text.lower()]
-                        if used_terms:
-                            st.write("Technical terms identified:")
-                            for term in used_terms:
-                                term_info = terms[term]
-                                st.markdown(f"**{term}** → {term_info['english']}")
-                                st.markdown(f"- Source: {term_info['source']}")
-                                st.markdown(f"- Context: {term_info['context']}")
-                        else:
-                            st.info("No technical terms were identified in the text.")
-                else:
-                    error_info = response.get('error', {})
-                    error_message = error_info.get('message', 'An unknown error occurred.')
-                    st.error(f"Error: {response.get('status_code')} - {error_message}")
-
-def render_translation_ui():
-    """Render the translation interface with side-by-side comparison."""
+    """Render the translation interface with side-by-side comparison and editable results."""
     st.header("Translation")
     
     with st.expander("Reference Sources"):
@@ -393,94 +324,123 @@ def render_translation_ui():
         input_text = st.text_area(
             "Enter text to translate:",
             placeholder="Enter the text you want to translate...",
-            height=300  # Make text area taller
+            height=300,
+            key="input_text"
         )
 
     with col2:
         st.subheader("Translation")
-        # Placeholder for translation that will be filled after translation
+        # Initialize session state for edited translation if it doesn't exist
         if 'translation_result' not in st.session_state:
             st.session_state.translation_result = ""
-        translation_placeholder = st.empty()
+            st.session_state.original_translation = ""  # Store original translation for comparison
         
+        # Editable translation area
+        edited_translation = st.text_area(
+            "Translated text (editable):",
+            value=st.session_state.translation_result,
+            height=300,
+            key="edited_translation"
+        )
+        
+        # Update session state with edited translation
+        st.session_state.translation_result = edited_translation
+        
+        # Show edit indicator if translation has been modified
+        if (st.session_state.get('original_translation') and 
+            st.session_state.original_translation != edited_translation):
+            st.caption("✏️ Translation has been edited")
+    
     # Put the translate button below both columns
-    if st.button("Translate", type="primary"):
-        if input_text.strip() == "":
-            st.warning("Please enter text to translate.")
-        else:
-            with st.spinner('Translating...'):
-                option = st.session_state.get('current_option', 'Norwegian to English')
-                direction = "no-to-en" if option == "Norwegian to English" else "en-to-no"
-                response = translate_with_context(input_text, direction, REFERENCE_SITES)
-                
-                if response.get('status_code') == 200:
-                    translated_text = response['content'][0]['text']
-                    st.session_state.translation_result = translated_text
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col1:
+        if st.button("Translate", type="primary"):
+            if input_text.strip() == "":
+                st.warning("Please enter text to translate.")
+            else:
+                with st.spinner('Translating...'):
+                    option = st.session_state.get('current_option', 'Norwegian to English')
+                    direction = "no-to-en" if option == "Norwegian to English" else "en-to-no"
+                    response = translate_with_context(input_text, direction, REFERENCE_SITES)
                     
-                    # Update the translation in the right column
-                    translation_placeholder.text_area(
-                        "Translated text:",
-                        value=translated_text,
-                        height=300,
-                        disabled=True
-                    )
+                    if response.get('status_code') == 200:
+                        translated_text = response['content'][0]['text']
+                        st.session_state.translation_result = translated_text
+                        st.session_state.original_translation = translated_text  # Store original translation
+                        
+                        # Rerun to update the UI
+                        st.rerun()
+                    else:
+                        error_info = response.get('error', {})
+                        error_message = error_info.get('message', 'An unknown error occurred.')
+                        st.error(f"Error: {response.get('status_code')} - {error_message}")
+    
+    with col2:
+        if st.button("Reset Translation"):
+            if st.session_state.get('original_translation'):
+                st.session_state.translation_result = st.session_state.original_translation
+                st.rerun()
+    
+    with col3:
+        if st.button("Clear All"):
+            st.session_state.translation_result = ""
+            st.session_state.original_translation = ""
+            st.session_state.input_text = ""
+            st.rerun()
+    
+    # Create a separate section for feedback and analysis
+    if st.session_state.translation_result:
+        with st.expander("Translation Analysis", expanded=True):
+            # Display validation results with severity levels
+            if 'validation' in response and response['validation']:
+                st.subheader("Quality Check Results")
+                for issue in response['validation']:
+                    severity_icon = {
+                        'high': '🔴',
+                        'medium': '🟡',
+                        'low': '🔵'
+                    }.get(issue['severity'], '🔵')
                     
-                    # Create a separate section for feedback and analysis
-                    with st.expander("Translation Analysis", expanded=True):
-                        # Display validation results with severity levels
-                        if 'validation' in response and response['validation']:
-                            st.subheader("Quality Check Results")
-                            for issue in response['validation']:
-                                severity_icon = {
-                                    'high': '🔴',
-                                    'medium': '🟡',
-                                    'low': '🔵'
-                                }.get(issue['severity'], '🔵')
-                                
-                                col1, col2 = st.columns([1, 4])
-                                with col1:
-                                    st.write(severity_icon)
-                                with col2:
-                                    st.markdown(f"**{issue['type'].title()}:** {issue['message']}")
-                                    if 'source' in issue:
-                                        st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;*Source:* {issue['source']}")
-                                    if 'reference' in issue:
-                                        st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;*Reference:* [{issue['source']}]({issue['reference']})")
-                        
-                        # Show technical terms in a more organized way
-                        st.subheader("Technical Terms Analysis")
-                        quality_checker = TranslationQuality()
-                        terms = quality_checker.technical_terms
-                        used_terms = [term for term in terms.keys() if term.lower() in input_text.lower()]
-                        
-                        if used_terms:
-                            for term in used_terms:
-                                term_info = terms[term]
-                                with st.container():
-                                    cols = st.columns([2, 2, 3])
-                                    with cols[0]:
-                                        st.markdown(f"**{term}**")
-                                    with cols[1]:
-                                        st.markdown(f"→ {term_info['english']}")
-                                    with cols[2]:
-                                        st.markdown(f"*{term_info['context']}*")
-                        else:
-                            st.info("No technical terms were identified in the text.")
-                        
-                        # Add copy buttons for convenience
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            if st.button("Copy Original"):
-                                st.write("Original text copied to clipboard!")
-                                st.clipboard(input_text)
-                        with col2:
-                            if st.button("Copy Translation"):
-                                st.write("Translation copied to clipboard!")
-                                st.clipboard(translated_text)
-                else:
-                    error_info = response.get('error', {})
-                    error_message = error_info.get('message', 'An unknown error occurred.')
-                    st.error(f"Error: {response.get('status_code')} - {error_message}")
+                    col1, col2 = st.columns([1, 4])
+                    with col1:
+                        st.write(severity_icon)
+                    with col2:
+                        st.markdown(f"**{issue['type'].title()}:** {issue['message']}")
+                        if 'source' in issue:
+                            st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;*Source:* {issue['source']}")
+                        if 'reference' in issue:
+                            st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;*Reference:* [{issue['source']}]({issue['reference']})")
+            
+            # Show technical terms in a more organized way
+            st.subheader("Technical Terms Analysis")
+            quality_checker = TranslationQuality()
+            terms = quality_checker.technical_terms
+            used_terms = [term for term in terms.keys() if term.lower() in input_text.lower()]
+            
+            if used_terms:
+                for term in used_terms:
+                    term_info = terms[term]
+                    with st.container():
+                        cols = st.columns([2, 2, 3])
+                        with cols[0]:
+                            st.markdown(f"**{term}**")
+                        with cols[1]:
+                            st.markdown(f"→ {term_info['english']}")
+                        with cols[2]:
+                            st.markdown(f"*{term_info['context']}*")
+            else:
+                st.info("No technical terms were identified in the text.")
+            
+            # Add copy buttons for convenience
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Copy Original"):
+                    st.write("Original text copied to clipboard!")
+                    st.clipboard(input_text)
+            with col2:
+                if st.button("Copy Translation"):
+                    st.write("Translation copied to clipboard!")
+                    st.clipboard(st.session_state.translation_result)
 
     # Display memory cache info in a subtle way
     if st.session_state.get('translation_result'):
