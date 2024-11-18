@@ -30,6 +30,19 @@ def load_technical_terms():
         "karbonbudsjett": "carbon budget",
     }
 
+# Add caching for API responses
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def cached_translate_with_context(text, direction, sources):
+    return translate_with_context(text, direction, sources)
+
+# Batch processing for multiple translations
+def batch_translate(texts: List[str], direction: str, sources: List[str]):
+    results = []
+    for text in texts:
+        result = cached_translate_with_context(text, direction, sources)
+        results.append(result)
+    return results
+
 class TranslationQuality:
     def __init__(self):
         self.reference_sites = REFERENCE_SITES
