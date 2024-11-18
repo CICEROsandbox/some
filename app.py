@@ -3,13 +3,55 @@ import requests
 import difflib
 import re
 import os
+import json
+from datetime import datetime
 
 API_KEY = os.getenv("CLAUDE_API_KEY") or st.secrets["API_KEY"]
 API_ENDPOINT = "https://api.anthropic.com/v1/messages"
 
 REFERENCE_SITES = [
-    "https://www.miljodirektoratet.no/ansvarsomrader/klima/fns-klimapanel-ipcc/dette-sier-fns-klimapanel/klimabegreper-pa-norsk/"
+    "https://www.miljodirektoratet.no/ansvarsomrader/klima/fns-klimapanel-ipcc/dette-sier-fns-klimapanel/klimabegreper-pa-norsk/",
+    "https://www.ipcc.ch/glossary/",
+    "https://unfccc.int/process-and-meetings/the-convention/glossary-of-climate-change-acronyms-and-terms"
 ]
+
+# Initialize session state for translation memory
+if 'translation_memory' not in st.session_state:
+    st.session_state.translation_memory = {}
+
+def load_technical_terms():
+    """Load technical terms and their translations."""
+    return {
+        "klimaendringer": "climate change",
+        "klimatilpasning": "climate adaptation",
+        "utslippsreduksjon": "emission reduction",
+        "klimafinansiering": "climate finance",
+        "karbonbudsjett": "carbon budget",
+        # Add more terms as needed
+    }
+
+def validate_translation(original_text, translated_text, direction):
+    """Validate translation quality and consistency."""
+    issues = []
+    technical_terms = load_technical_terms()
+    
+    # Check for technical term consistency
+    if direction == "no-to-en":
+        for norwegian, english in technical_terms.items():
+            if norwegian.lower() in original_text.lower() and english.lower() not in translated_text.lower():
+                issues.append(f"Warning: '{norwegian}' might not be correctly translated as '{english}'")
+    
+    # Check for formatting
+    if len(translated_text.split()) < len(original_text.split()) * 0.5:
+        issues.append("Warning: Translation appears too short")
+    
+    # Check for untranslated terms
+    if direction == "no-to-en":
+        norwegian_chars = set('æøåÆØÅ')
+        if any(char in translated_text for char in norwegian_chars):
+            issues.append("Warning: Some Norwegian characters remain in the translation")
+    
+    return issues
 
 def get_word_diffs(original, suggested):
     def split_into_words(text):
@@ -47,23 +89,71 @@ def get_word_diffs(original, suggested):
             })
     return changes
 
-def translate_with_context(text, sources):
-    prompt_template = """Du er en spesialist i å oversette klimaforhandlingstekster. Din oppgave er å:
+def update_translation_memory(original, translated, direction):
+    """Update translation memory with new translations."""
+    key = f"{original.strip().lower()}_{direction}"
+    if key not in st.session_state.translation_memory:
+        st.session_state.translation_memory[key] = {
+            'translation': translated,
+            'timestamp': datetime.now().isoformat(),
+            'direction': direction
+        }
 
-    1. Først sjekke referansesidene for hvordan lignende begreper og uttrykk er oversatt:
-    {sources}
+def get_from_translation_memory(text, direction):
+    """Retrieve translation from memory if available."""
+    key = f"{text.strip().lower()}_{direction}"
+    if key in st.session_state.translation_memory:
+        return st.session_state.translation_memory[key]['translation']
+    return None
 
-    2. For tekniske termer:
-    - Bruk etablerte norske oversettelser fra referansesidene
-    - For termer som ikke finnes i kildene, beskriv konseptet på norsk og behold engelsk term i parentes
-    - Ved flere brukte oversettelser, vis alternativene
+def translate_with_context(text, direction, sources):
+    # First check translation memory
+    cached_translation = get_from_translation_memory(text, direction)
+    if cached_translation:
+        st.info("Retrieved from translation memory")
+        return {'status_code': 200, 'content': [{'text': cached_translation}]}
 
-    3. Fokuser på å formidle samme mening som i originalteksten, ikke ord-for-ord oversettelse
+    if direction == "no-to-en":
+        prompt_template = """You are a specialist in translating climate negotiation texts from Norwegian to English. Your task is to:
 
-    Oversett denne teksten:
-    {text}
+        1. First check the reference pages for how similar concepts and expressions are translated:
+        {sources}
 
-    Tips: Se spesielt etter hvordan Miljødirektoratet og Regjeringen formulerer lignende konsepter."""
+        2. For technical terms:
+        - Use established English translations from authoritative sources
+        - For terms without direct translations, describe the concept in English and keep Norwegian term in parentheses
+        - When multiple translations exist, use the most widely accepted one
+        - Maintain consistency with IPCC and UNFCCC terminology
+
+        3. Focus on conveying the same meaning as the original text, not word-for-word translation
+
+        4. Ensure the translation:
+        - Uses appropriate formal language for climate negotiations
+        - Maintains technical precision
+        - Follows standard English capitalization and punctuation rules
+        - Preserves any specific references to Norwegian policies or institutions
+
+        Translate this text from Norwegian to English:
+        {text}
+
+        Note: Pay special attention to how technical terms are used in IPCC reports and UNFCCC documents."""
+    else:
+        prompt_template = """Du er en spesialist i å oversette klimaforhandlingstekster fra engelsk til norsk. Din oppgave er å:
+
+        1. Først sjekke referansesidene for hvordan lignende begreper og uttrykk er oversatt:
+        {sources}
+
+        2. For tekniske termer:
+        - Bruk etablerte norske oversettelser fra referansesidene
+        - For termer som ikke finnes i kildene, beskriv konseptet på norsk og behold engelsk term i parentes
+        - Ved flere brukte oversettelser, vis alternativene
+
+        3. Fokuser på å formidle samme mening som i originalteksten, ikke ord-for-ord oversettelse
+
+        Oversett denne teksten:
+        {text}
+
+        Tips: Se spesielt etter hvordan Miljødirektoratet og Regjeringen formulerer lignende konsepter."""
 
     headers = {
         "anthropic-version": "2023-06-01",
@@ -81,90 +171,136 @@ def translate_with_context(text, sources):
         }],
         "model": "claude-3-sonnet-20240229",
         "max_tokens": 1000,
-        "temperature": 0.7
+        "temperature": 0.3  # Lower temperature for more consistent translations
+    }
+
+    response = requests.post(API_ENDPOINT, headers=headers, json=payload)
+    
+    if response.status_code == 200:
+        result = response.json()
+        translated_text = result["content"][0]["text"]
+        update_translation_memory(text, translated_text, direction)
+        
+    return response
+
+def review_norwegian_text(text):
+    """Review and correct Norwegian text."""
+    headers = {
+        "anthropic-version": "2023-06-01",
+        "x-api-key": API_KEY,
+        "content-type": "application/json",
+    }
+
+    prompt = """Du er en ekspert på norsk klimaterminologi. 
+    Korriger følgende tekst med fokus på:
+    - Presist og korrekt fagspråk i klimaforhandlinger
+    - Konsistent bruk av tekniske termer
+    - Korrekt grammatikk og tegnsetting
+    - Formelt språk passende for offisielle dokumenter
+    
+    Gi kun korrigert versjon uten forklaringer.
+    Behold tekniske termer som er korrekte.
+
+    {text}"""
+
+    payload = {
+        "messages": [{
+            "role": "user",
+            "content": prompt.format(text=text)
+        }],
+        "model": "claude-3-sonnet-20240229",
+        "max_tokens": 1000,
+        "temperature": 0.3
     }
 
     return requests.post(API_ENDPOINT, headers=headers, json=payload)
 
-st.title("Klimaforhandlinger Oversetter")
+# Streamlit UI
+st.title("Climate Negotiations Translator")
+
+# Sidebar with translation memory stats
+with st.sidebar:
+    st.subheader("Translation Memory Stats")
+    st.write(f"Cached translations: {len(st.session_state.translation_memory)}")
+    if st.button("Clear Translation Memory"):
+        st.session_state.translation_memory = {}
+        st.success("Translation memory cleared!")
 
 option = st.sidebar.selectbox(
-    "Velg funksjon:",
-    ("Oversett Engelsk til Norsk", "Korrektur Norsk Tekst")
+    "Select function:",
+    ("Norwegian to English", "English to Norwegian", "Norwegian Text Review")
 )
 
-if option == "Oversett Engelsk til Norsk":
-    st.header("Oversett Engelsk til Norsk")
+if option in ["Norwegian to English", "English to Norwegian"]:
+    st.header(option)
     
-    with st.expander("Referansekilder"):
-        st.write("Oversettelsen bruker terminologi fra følgende kilder:")
+    with st.expander("Reference Sources"):
+        st.write("The translation uses terminology from the following sources:")
         for site in REFERENCE_SITES:
             st.write(f"- {site}")
     
-    english_text = st.text_area("Skriv inn engelsk tekst:")
+    input_text = st.text_area(
+        "Enter text to translate:",
+        placeholder="Enter the text you want to translate..."
+    )
 
-    if st.button("Oversett"):
-        if english_text.strip() == "":
-            st.warning("Vennligst skriv inn tekst som skal oversettes.")
+    if st.button("Translate"):
+        if input_text.strip() == "":
+            st.warning("Please enter text to translate.")
         else:
-            with st.spinner('Oversetter...'):
-                response = translate_with_context(english_text, REFERENCE_SITES)
+            with st.spinner('Translating...'):
+                direction = "no-to-en" if option == "Norwegian to English" else "en-to-no"
+                response = translate_with_context(input_text, direction, REFERENCE_SITES)
                 
                 if response.status_code == 200:
                     result = response.json()
                     translated_text = result["content"][0]["text"]
-                    st.subheader("Oversatt tekst:")
+                    
+                    # Validate translation
+                    issues = validate_translation(input_text, translated_text, direction)
+                    if issues:
+                        st.warning("Potential translation issues:")
+                        for issue in issues:
+                            st.write(f"- {issue}")
+                    
+                    st.subheader("Translated text:")
                     st.write(translated_text)
+                    
+                    # Show technical terms used
+                    with st.expander("Technical Terms Used"):
+                        terms = load_technical_terms()
+                        used_terms = [term for term in terms.keys() if term.lower() in input_text.lower()]
+                        if used_terms:
+                            st.write("Technical terms identified:")
+                            for term in used_terms:
+                                st.write(f"- {term} → {terms[term]}")
                 else:
                     error_info = response.json().get('error', {})
-                    error_message = error_info.get('message', 'En ukjent feil oppstod.')
-                    st.error(f"Feil: {response.status_code} - {error_message}")
+                    error_message = error_info.get('message', 'An unknown error occurred.')
+                    st.error(f"Error: {response.status_code} - {error_message}")
 
-if option == "Korrektur Norsk Tekst":
-    st.header("Korrektur Norsk Tekst")
+elif option == "Norwegian Text Review":
+    st.header("Norwegian Text Review")
     
     if 'final_text' not in st.session_state:
         st.session_state.final_text = ''
     
-    norwegian_text = st.text_area("Skriv inn tekst som skal korrekturleses:")
+    norwegian_text = st.text_area("Enter text for review:")
 
-    if st.button("Korriger"):
+    if st.button("Review"):
         if norwegian_text.strip() == "":
-            st.warning("Vennligst skriv inn tekst som skal korrekturleses.")
+            st.warning("Please enter text for review.")
         else:
-            with st.spinner('Korrekturleser...'):
-                headers = {
-                    "anthropic-version": "2023-06-01",
-                    "x-api-key": API_KEY,
-                    "content-type": "application/json",
-                }
-
-                prompt = """Du er en ekspert på norsk klimaterminologi. 
-                Korriger følgende tekst med fokus på presist og korrekt språk i klimaforhandlinger.
-                Gi kun korrigert versjon uten forklaringer.
-                Behold tekniske termer som er korrekte.
-
-                {text}"""
-
-                payload = {
-                    "messages": [{
-                        "role": "user",
-                        "content": prompt.format(text=norwegian_text)
-                    }],
-                    "model": "claude-3-sonnet-20240229",
-                    "max_tokens": 1000,
-                    "temperature": 0.7
-                }
-
-                response = requests.post(API_ENDPOINT, headers=headers, json=payload)
-
+            with st.spinner('Reviewing...'):
+                response = review_norwegian_text(norwegian_text)
+                
                 if response.status_code == 200:
                     result = response.json()
                     suggested_text = result["content"][0]["text"]
                     
                     changes = get_word_diffs(norwegian_text, suggested_text)
                     
-                    st.subheader("Gjennomgå endringer:")
+                    st.subheader("Review changes:")
                     
                     final_text = norwegian_text
                     
@@ -180,23 +316,22 @@ if option == "Korrektur Norsk Tekst":
                                     
                             if change['type'] in ['change', 'insertion']:
                                 with col2:
-                                    st.markdown(f"**Foreslått:** _{change['suggested']}_")
+                                    st.markdown(f"**Suggested:** _{change['suggested']}_")
                             
                             with col3:
-                                key = f"change_{i}"
-                                if st.button("Godta", key=f"accept_{i}"):
+                                if st.button("Accept", key=f"accept_{i}"):
                                     final_text = final_text.replace(
                                         change['original'] if change['type'] != 'insertion' else '',
                                         change['suggested']
                                     )
                                     st.session_state.final_text = final_text
                                 
-                                if st.button("Avslå", key=f"decline_{i}"):
+                                if st.button("Reject", key=f"decline_{i}"):
                                     st.session_state.final_text = final_text
                     
-                    st.subheader("Endelig tekst:")
+                    st.subheader("Final text:")
                     st.write(st.session_state.final_text or final_text)
                 else:
                     error_info = response.json().get('error', {})
-                    error_message = error_info.get('message', 'En ukjent feil oppstod.')
-                    st.error(f"Feil: {response.status_code} - {error_message}")
+                    error_message = error_info.get('message', 'An unknown error occurred.')
+                    st.error(f"Error: {response.status_code} - {error_message}")
