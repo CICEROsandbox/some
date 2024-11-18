@@ -15,6 +15,45 @@ REFERENCE_SITES = [
     "https://unfccc.int/process-and-meetings/the-convention/glossary-of-climate-change-acronyms-and-terms"
 ]
 
+class TranslationQuality:
+    def __init__(self):
+        self.reference_sites = REFERENCE_SITES  # Use your existing REFERENCE_SITES
+        
+        # Extend your existing technical terms with more metadata
+        self.technical_terms = {
+            "klimaendringer": {
+                "english": "climate change",
+                "source": "Miljødirektoratet",
+                "context": "General term for climate change",
+                "reference": self.reference_sites[0]
+            },
+            "klimatilpasning": {
+                "english": "climate adaptation",
+                "source": "IPCC",
+                "context": "Adaptation to climate change",
+                "reference": self.reference_sites[1]
+            },
+            # Add your existing terms with metadata
+            "utslippsreduksjon": {
+                "english": "emission reduction",
+                "source": "Miljødirektoratet",
+                "context": "Used in mitigation contexts",
+                "reference": self.reference_sites[0]
+            },
+            "klimafinansiering": {
+                "english": "climate finance",
+                "source": "UNFCCC",
+                "context": "Financial flows related to climate action",
+                "reference": self.reference_sites[2]
+            },
+            "karbonbudsjett": {
+                "english": "carbon budget",
+                "source": "IPCC",
+                "context": "Remaining carbon emissions allowance",
+                "reference": self.reference_sites[1]
+            }
+        }
+
 # Initialize session state for translation memory
 if 'translation_memory' not in st.session_state:
     st.session_state.translation_memory = {}
@@ -30,28 +69,41 @@ def load_technical_terms():
         # Add more terms as needed
     }
 
-def validate_translation(original_text, translated_text, direction):
-    """Validate translation quality and consistency."""
-    issues = []
-    technical_terms = load_technical_terms()
-    
-    # Check for technical term consistency
-    if direction == "no-to-en":
-        for norwegian, english in technical_terms.items():
-            if norwegian.lower() in original_text.lower() and english.lower() not in translated_text.lower():
-                issues.append(f"Warning: '{norwegian}' might not be correctly translated as '{english}'")
-    
-    # Check for formatting
-    if len(translated_text.split()) < len(original_text.split()) * 0.5:
-        issues.append("Warning: Translation appears too short")
-    
-    # Check for untranslated terms
-    if direction == "no-to-en":
-        norwegian_chars = set('æøåÆØÅ')
-        if any(char in translated_text for char in norwegian_chars):
-            issues.append("Warning: Some Norwegian characters remain in the translation")
-    
-    return issues
+ def validate_translation(self, original: str, translated: str, direction: str) -> List[Dict]:
+        """Enhanced validation that includes your existing checks plus new ones."""
+        issues = []
+        
+        # Your existing technical term checks
+        if direction == "no-to-en":
+            for term, details in self.technical_terms.items():
+                if term.lower() in original.lower() and details['english'].lower() not in translated.text.lower():
+                    issues.append({
+                        'type': 'technical_term',
+                        'severity': 'high',
+                        'message': f"Warning: '{term}' might not be correctly translated as '{details['english']}'",
+                        'source': details['source'],
+                        'reference': details['reference']
+                    })
+        
+        # Your existing formatting checks
+        if len(translated.split()) < len(original.split()) * 0.5:
+            issues.append({
+                'type': 'formatting',
+                'severity': 'medium',
+                'message': "Warning: Translation appears too short"
+            })
+        
+        # Your existing Norwegian character check
+        if direction == "no-to-en":
+            norwegian_chars = set('æøåÆØÅ')
+            if any(char in translated for char in norwegian_chars):
+                issues.append({
+                    'type': 'formatting',
+                    'severity': 'high',
+                    'message': "Warning: Some Norwegian characters remain in the translation"
+                })
+        
+        return issues
 
 def get_word_diffs(original, suggested):
     def split_into_words(text):
@@ -107,11 +159,35 @@ def get_from_translation_memory(text, direction):
     return None
 
 def translate_with_context(text, direction, sources):
-    # First check translation memory
+    # Initialize quality checker
+    quality_checker = TranslationQuality()
+    
+    # First check translation memory (keep your existing code)
     cached_translation = get_from_translation_memory(text, direction)
     if cached_translation:
         st.info("Retrieved from translation memory")
         return {'status_code': 200, 'content': [{'text': cached_translation}]}
+
+    # Your existing translation code...
+    response = requests.post(API_ENDPOINT, headers=headers, json=payload)
+    
+if response.status_code == 200:
+    result = response.json()
+    translated_text = result["content"][0]["text"]
+    
+    # Display validation results with severity levels
+    if 'validation' in result and result['validation']:
+        with st.expander("Translation Quality Check"):
+            for issue in result['validation']:
+                severity_icon = "🔴" if issue['severity'] == 'high' else "🟡" if issue['severity'] == 'medium' else "🔵"
+                st.write(f"{severity_icon} {issue['message']}")
+                if 'source' in issue:
+                    st.write(f"Source: {issue['source']}")
+                if 'reference' in issue:
+                    st.write(f"Reference: {issue['reference']}")
+    
+    st.subheader("Translated text:")
+    st.write(translated_text)
 
     if direction == "no-to-en":
         prompt_template = """You are a specialist in translating climate negotiation texts from Norwegian to English. Your task is to:
