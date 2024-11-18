@@ -157,8 +157,6 @@ def get_from_translation_memory(text, direction):
     return None
 
 def translate_with_context(text, direction, sources):
-    """Translate text with quality controls and memory management."""
-    # Initialize quality checker
     quality_checker = TranslationQuality()
     
     # First check translation memory
@@ -234,13 +232,15 @@ def translate_with_context(text, direction, sources):
         result = response.json()
         translated_text = result["content"][0]["text"]
         
-        # Validate translation
+        # Validate translation using our quality checker
         validation_results = quality_checker.validate_translation(text, translated_text, direction)
-        result['validation'] = validation_results
         
-        # Update translation memory if no severe issues
-        if not any(issue['severity'] == 'high' for issue in validation_results):
-            update_translation_memory(text, translated_text, direction)
+        # Create a modified response that includes both translation and validation
+        return {
+            'status_code': 200,
+            'content': [{'text': translated_text}],
+            'validation': validation_results
+        }
     
     return response
 
@@ -305,48 +305,59 @@ if option in ["Norwegian to English", "English to Norwegian"]:
         placeholder="Enter the text you want to translate..."
     )
 
-    if st.button("Translate"):
-        if input_text.strip() == "":
-            st.warning("Please enter text to translate.")
-        else:
-            with st.spinner('Translating...'):
-                direction = "no-to-en" if option == "Norwegian to English" else "en-to-no"
-                response = translate_with_context(input_text, direction, REFERENCE_SITES)
+if st.button("Translate"):
+    if input_text.strip() == "":
+        st.warning("Please enter text to translate.")
+    else:
+        with st.spinner('Translating...'):
+            direction = "no-to-en" if option == "Norwegian to English" else "en-to-no"
+            response = translate_with_context(input_text, direction, REFERENCE_SITES)
+            
+            if response.get('status_code') == 200:
+                translated_text = response['content'][0]['text']
                 
-                if response.status_code == 200:
-                    result = response.json()
-                    translated_text = result["content"][0]["text"]
-                    
-                    # Display validation results with severity levels
-                    if 'validation' in result and result['validation']:
-                        with st.expander("Translation Quality Check"):
-                            for issue in result['validation']:
-                                severity_icon = "🔴" if issue['severity'] == 'high' else "🟡" if issue['severity'] == 'medium' else "🔵"
-                                st.write(f"{severity_icon} {issue['message']}")
-                                if 'source' in issue:
-                                    st.write(f"Source: {issue['source']}")
-                                if 'reference' in issue:
-                                    st.write(f"Reference: {issue['reference']}")
-                    
-                    st.subheader("Translated text:")
-                    st.write(translated_text)
-                    
-                    # Show technical terms used
-                    with st.expander("Technical Terms Used"):
-                        quality_checker = TranslationQuality()
-                        terms = quality_checker.technical_terms
-                        used_terms = [term for term in terms.keys() if term.lower() in input_text.lower()]
-                        if used_terms:
-                            st.write("Technical terms identified:")
-                            for term in used_terms:
-                                term_info = terms[term]
-                                st.write(f"- {term} → {term_info['english']}")
-                                st.write(f"  Source: {term_info['source']}")
-                                st.write(f"  Context: {term_info['context']}")
-                else:
-                    error_info = response.json().get('error', {})
-                    error_message = error_info.get('message', 'An unknown error occurred.')
-                    st.error(f"Error: {response.status_code} - {error_message}")
+                # Display validation results with severity levels
+                if 'validation' in response and response['validation']:
+                    with st.expander("Translation Quality Check"):
+                        for issue in response['validation']:
+                            # Display severity with colored icons
+                            severity_icon = {
+                                'high': '🔴',
+                                'medium': '🟡',
+                                'low': '🔵'
+                            }.get(issue['severity'], '🔵')
+                            
+                            # Display the issue message
+                            st.markdown(f"{severity_icon} **{issue['type'].title()}:** {issue['message']}")
+                            
+                            # Display source and reference if available
+                            if 'source' in issue:
+                                st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;**Source:** {issue['source']}")
+                            if 'reference' in issue:
+                                st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;**Reference:** [{issue['source']}]({issue['reference']})")
+                            st.write("---")
+                
+                st.subheader("Translated text:")
+                st.write(translated_text)
+                
+                # Show technical terms used
+                with st.expander("Technical Terms Used"):
+                    quality_checker = TranslationQuality()
+                    terms = quality_checker.technical_terms
+                    used_terms = [term for term in terms.keys() if term.lower() in input_text.lower()]
+                    if used_terms:
+                        st.write("Technical terms identified:")
+                        for term in used_terms:
+                            term_info = terms[term]
+                            st.markdown(f"**{term}** → {term_info['english']}")
+                            st.markdown(f"- Source: {term_info['source']}")
+                            st.markdown(f"- Context: {term_info['context']}")
+                    else:
+                        st.info("No technical terms were identified in the text.")
+            else:
+                error_info = response.get('error', {})
+                error_message = error_info.get('message', 'An unknown error occurred.')
+                st.error(f"Error: {response.get('status_code')} - {error_message}")
 
 elif option == "Norwegian Text Review":
     st.header("Norwegian Text Review")
